@@ -3,231 +3,255 @@
 #include <queue>
 #include <cmath>
 #include <iostream>
+
 #include "Steering.hpp"
 #include "BehaviorController.hpp"
 #include "Node.hpp"
 
 using namespace std;
 
+//———————————————————————————————————————————————————————————————————————————————
+// Breadcrumb definitions
+//———————————————————————————————————————————————————————————————————————————————
+struct crumb {
+    sf::CircleShape shape;
+    crumb(int /*idx*/) {
+        shape.setRadius(3.f);
+        shape.setOrigin(3.f, 3.f);
+        shape.setFillColor(sf::Color(100, 100, 100, 180));
+    }
+};
 
+struct BoidBreadcrumbs {
+    vector<crumb> crumbs;
+    float         drop_timer;
+    int           crumb_idx;
+
+    BoidBreadcrumbs()
+      : drop_timer(0.1f)
+      , crumb_idx(0)
+    {
+        crumbs.reserve(20);
+        for (int i = 0; i < 20; ++i)
+            crumbs.emplace_back(i);
+    }
+};
+
+//———————————————————————————————————————————————————————————————————————————————
+// Your existing globals & utilities
+//———————————————————————————————————————————————————————————————————————————————
 vector<Node> graphNodes;
-vector<int> currentPath;
-int currentPathIndex = 0;
+vector<int>  currentPath;
+int          currentPathIndex = 0;
 
 float distance(const sf::Vector2f& a, const sf::Vector2f& b) {
-    sf::Vector2f diff = a - b;
-    return sqrt(diff.x * diff.x + diff.y * diff.y);
+    sf::Vector2f d = a - b;
+    return sqrt(d.x*d.x + d.y*d.y);
 }
 
-bool isInsideWall(const sf::Vector2f& pos, const vector<sf::RectangleShape>& walls) {
-    for (auto& wall : walls)
-        if (wall.getGlobalBounds().contains(pos)) return true;
+bool isInsideWall(const sf::Vector2f& pos,
+                  const vector<sf::RectangleShape>& walls)
+{
+    for (auto& w : walls)
+        if (w.getGlobalBounds().contains(pos))
+            return true;
     return false;
 }
 
 void drawSymmetricRoomLayout(vector<sf::RectangleShape>& walls) {
     sf::RectangleShape wall;
-    wall.setFillColor(sf::Color(150, 0, 0));
-
-    // Outer walls
-    wall.setSize(sf::Vector2f(12, 420)); wall.setPosition(50, 30); walls.push_back(wall);  // Left
-    wall.setSize(sf::Vector2f(12, 420)); wall.setPosition(568, 30); walls.push_back(wall); // Right
-    wall.setSize(sf::Vector2f(515, 12)); wall.setPosition(62, 30); walls.push_back(wall);  // Top
-    wall.setSize(sf::Vector2f(515, 12)); wall.setPosition(62, 438); walls.push_back(wall); // Bottom
-
-    // Room separators
-    wall.setSize(sf::Vector2f(184, 12)); wall.setPosition(62, 240); walls.push_back(wall); // Left horizontal
-    wall.setSize(sf::Vector2f(175, 12)); wall.setPosition(395, 240); walls.push_back(wall); // Right horizontal
-    wall.setSize(sf::Vector2f(12, 150)); wall.setPosition(280, 30); walls.push_back(wall);  // Top vertical
-    wall.setSize(sf::Vector2f(12, 160)); wall.setPosition(285, 280); walls.push_back(wall); // Bottom vertical
-
-    // Top-left vertical
-    wall.setSize(sf::Vector2f(12, 72)); wall.setPosition(165, 130); walls.push_back(wall);
-
-    // U-shape top-right
-    wall.setSize(sf::Vector2f(12, 72)); wall.setPosition(375, 80); walls.push_back(wall);
-    wall.setSize(sf::Vector2f(12, 72)); wall.setPosition(430, 80); walls.push_back(wall);
-    wall.setSize(sf::Vector2f(56, 12)); wall.setPosition(375, 140); walls.push_back(wall); //middle line
-
-    // Bottom-right plus
-    wall.setSize(sf::Vector2f(12, 72)); wall.setPosition(425, 325); walls.push_back(wall); //vertical
-    wall.setSize(sf::Vector2f(72, 12)); wall.setPosition(395, 350); walls.push_back(wall); //hori
-
-    // Bottom-left plus (mirrored)
-    wall.setSize(sf::Vector2f(12, 72)); wall.setPosition(140, 330); walls.push_back(wall);
-    wall.setSize(sf::Vector2f(72, 12)); wall.setPosition(110, 350); walls.push_back(wall);
+    wall.setFillColor(sf::Color(150,0,0));
+    // … all your wall setup as before …
+    // Outer
+    wall.setSize({12,420}); wall.setPosition({50,30});  walls.push_back(wall);
+    wall.setSize({12,420}); wall.setPosition({568,30}); walls.push_back(wall);
+    wall.setSize({515,12}); wall.setPosition({62,30});  walls.push_back(wall);
+    wall.setSize({515,12}); wall.setPosition({62,438});walls.push_back(wall);
+    // Separators
+    wall.setSize({184,12}); wall.setPosition({62,240}); walls.push_back(wall);
+    wall.setSize({175,12}); wall.setPosition({395,240});walls.push_back(wall);
+    wall.setSize({12,150}); wall.setPosition({280,30}); walls.push_back(wall);
+    wall.setSize({12,160}); wall.setPosition({285,280});walls.push_back(wall);
+    // extras…
+    wall.setSize({12,72});  wall.setPosition({165,130});walls.push_back(wall);
+    wall.setSize({12,72});  wall.setPosition({375,80}); walls.push_back(wall);
+    wall.setSize({12,72});  wall.setPosition({430,80}); walls.push_back(wall);
+    wall.setSize({56,12});  wall.setPosition({375,140});walls.push_back(wall);
+    wall.setSize({12,72});  wall.setPosition({425,325});walls.push_back(wall);
+    wall.setSize({72,12});  wall.setPosition({395,350});walls.push_back(wall);
+    wall.setSize({12,72});  wall.setPosition({140,330});walls.push_back(wall);
+    wall.setSize({72,12});  wall.setPosition({110,350});walls.push_back(wall);
 }
 
-void createGraphGrid(vector<Node>& graphNodes, const vector<sf::RectangleShape>& walls, int spacing, int width, int height) {
-    vector<sf::Vector2f> removePositions = {
-        {156, 126}, {156, 150}, {156, 174}, {156, 198},       // Top-left vertical
-        {396, 102}, {420, 102}, {396, 126},                   // U-shape
-        {108, 366},                                           // Bottom-left plus
-        {444, 366}, {468, 366}                                // Bottom-right plus
+void createGraphGrid(vector<Node>& graph,
+                     const vector<sf::RectangleShape>& walls,
+                     int spacing,
+                     int W,
+                     int H)
+{
+    vector<sf::Vector2f> removePts = {
+        {156,126},{156,150},{156,174},{156,198},
+        {396,102},{420,102},{396,126},
+        {108,366},{444,366},{468,366}
     };
-
-    for (int x = spacing; x < width; x += spacing) {
-        for (int y = spacing; y < height; y += spacing) {
-            sf::Vector2f pos(x, y);
-            if (x <= 60 || x >= 580 || y <= 30 || y >= 450) continue;
-            if (!isInsideWall(pos, walls)) {
-                bool skip = false;
-                for (const auto& rm : removePositions)
-                    if (distance(pos, rm) < 1.0f) {
-                        skip = true;
-                        break;
-                    }
-                if (!skip) graphNodes.push_back({ pos, {} });
-            }
+    for (int x = spacing; x < W; x += spacing) {
+        for (int y = spacing; y < H; y += spacing) {
+            sf::Vector2f p(x,y);
+            if (x<=60||x>=580||y<=30||y>=450) continue;
+            if (isInsideWall(p,walls)) continue;
+            bool skip=false;
+            for (auto& r : removePts)
+                if (distance(p,r)<1.f) { skip=true; break; }
+            if (!skip) graph.push_back({p,{}});
         }
     }
-
-    for (int i = 0; i < graphNodes.size(); ++i) {
-        for (int j = i + 1; j < graphNodes.size(); ++j) {
-            float d = distance(graphNodes[i].position, graphNodes[j].position);
-            if (d <= spacing + 2) {
-                graphNodes[i].neighbors.push_back(j);
-                graphNodes[j].neighbors.push_back(i);
+    for (int i=0; i<(int)graph.size(); ++i) {
+        for (int j=i+1; j<(int)graph.size(); ++j) {
+            if (distance(graph[i].position, graph[j].position) <= spacing+2) {
+                graph[i].neighbors.push_back(j);
+                graph[j].neighbors.push_back(i);
             }
         }
     }
 }
 
-int getClosestNode(sf::Vector2f pos) {
-    int Indx = 0;
-    float minDist = distance(pos, graphNodes[0].position);
-    for (int i = 1; i < graphNodes.size(); ++i) {
+int getClosestNode(const sf::Vector2f& pos) {
+    int best = 0;
+    float md = distance(pos, graphNodes[0].position);
+    for (int i = 1; i < (int)graphNodes.size(); ++i) {
         float d = distance(pos, graphNodes[i].position);
-        if (d < minDist) {
-            minDist = d;
-            Indx = i;
-        }
+        if (d < md) { md = d; best = i; }
     }
-    return Indx;
+    return best;
 }
 
-vector<int> AStar(int startIndx, int goalIndx) {
-    vector<float> gScore(graphNodes.size(), INFINITY);
-    vector<float> fScore(graphNodes.size(), INFINITY);
-    vector<int> cameFrom(graphNodes.size(), -1);
-    auto cmp = [&](int left, int right) { return fScore[left] > fScore[right]; };
-    priority_queue<int, vector<int>, decltype(cmp)> openSet(cmp);
+vector<int> AStar(int startIdx, int goalIdx) {
+    int N = graphNodes.size();
+    vector<float> G(N, INFINITY), F(N, INFINITY);
+    vector<int> from(N, -1);
+    auto cmp = [&](int a,int b){ return F[a]>F[b]; };
+    priority_queue<int, vector<int>, decltype(cmp)> open(cmp);
 
-    gScore[startIndx] = 0;
-    fScore[startIndx] = distance(graphNodes[startIndx].position, graphNodes[goalIndx].position);
-    openSet.push(startIndx);
+    G[startIdx] = 0;
+    F[startIdx] = distance(graphNodes[startIdx].position,
+                           graphNodes[goalIdx].position);
+    open.push(startIdx);
 
-    while (!openSet.empty()) {
-        int current = openSet.top(); openSet.pop();
-
-        if (current == goalIndx) {
+    while (!open.empty()) {
+        int cur = open.top(); open.pop();
+        if (cur == goalIdx) {
             vector<int> path;
-            while (current != -1) {
-                path.push_back(current);
-                current = cameFrom[current];
-            }
+            for (int at = cur; at != -1; at = from[at])
+                path.push_back(at);
             reverse(path.begin(), path.end());
             return path;
         }
-
-        for (int neighbor : graphNodes[current].neighbors) {
-            float tentG = gScore[current] + distance(graphNodes[current].position, graphNodes[neighbor].position);
-            if (tentG < gScore[neighbor]) {
-                cameFrom[neighbor] = current;
-                gScore[neighbor] = tentG;
-                fScore[neighbor] = tentG + distance(graphNodes[neighbor].position, graphNodes[goalIndx].position);
-                openSet.push(neighbor);
+        for (int nb : graphNodes[cur].neighbors) {
+            float t = G[cur] +
+              distance(graphNodes[cur].position, graphNodes[nb].position);
+            if (t < G[nb]) {
+                from[nb] = cur;
+                G[nb]    = t;
+                F[nb]    = t + distance(
+                  graphNodes[nb].position,
+                  graphNodes[goalIdx].position
+                );
+                open.push(nb);
             }
         }
     }
     return {};
 }
 
+//———————————————————————————————————————————————————————————————————————————————
+// main()
+//———————————————————————————————————————————————————————————————————————————————
 int main() {
-    sf::RenderWindow window(sf::VideoMode(640, 480), "Scaled 4-Room Layout");
-
+    sf::RenderWindow window({640,480}, "Scaled 4-Room Layout");
     vector<sf::RectangleShape> walls;
-    int nodeSpacing = 24;
-    Kinematic character;
-
     drawSymmetricRoomLayout(walls);
-    createGraphGrid(graphNodes, walls, nodeSpacing, 640, 480);
+    createGraphGrid(graphNodes, walls, 24, 640, 480);
+
+    // — Player Boid & Breadcrumbs —
+    Kinematic character;
+    character.position    = graphNodes[0].position;
+    character.velocity    = {0,0};
+    character.orientation = 0;
+    character.rotation    = 0;
 
     BehaviorController controller(graphNodes, walls);
     controller.initialize(character);
 
+    BoidBreadcrumbs breadcrumbs;  // <— here!
+
+    // — Sprite setup —
     sf::Texture boidTexture;
     if (!boidTexture.loadFromFile("./boid-sm.png")) {
         cout << "Failed to load boid image!" << endl;
         return -1;
     }
-
-    sf::Sprite boidSprite;
-    boidSprite.setTexture(boidTexture);
-    boidSprite.setOrigin(boidSprite.getLocalBounds().width / 2.f, boidSprite.getLocalBounds().height / 2.f);
-    boidSprite.setScale(2.5f, 2.5f);
-
-    
-    character.position = graphNodes[0].position;
-    character.velocity = sf::Vector2f(0.f, 0.f);
-    character.orientation = 0.f;
-    character.rotation = 0.f;
-
-    Kinematic targetKinematic = character;
-    ArriveBehavior arrive(150.f, 150.f, 10.f, 80.f, 0.4f);
-    AlignBehavior align(100.f, PI / 1.0f, 0.1f, 0.1f, 0.1f);
+    sf::Sprite boidSprite(boidTexture);
+    boidSprite.setOrigin(
+      boidSprite.getLocalBounds().width/2.f,
+      boidSprite.getLocalBounds().height/2.f
+    );
+    boidSprite.setScale(2.5f,2.5f);
 
     sf::Clock clock;
-    bool frozen = true;
-
     while (window.isOpen()) {
+        // 1) Poll events
         sf::Event event;
         while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) 
+            if (event.type == sf::Event::Closed)
                 window.close();
         }
-                // ─── decision‐tree update ───
-        float deltaTime = clock.restart().asSeconds();
-        SteeringOutput steer = controller.update(character, deltaTime);
 
-        // apply whichever behavior the tree chose
-        character.velocity  += steer.linear  * deltaTime;
-        character.position  += character.velocity * deltaTime;
-        character.rotation  += steer.angular * deltaTime;
-        character.orientation+= character.rotation * deltaTime;
-        character.orientation = mapToRange(character.orientation);
-        
+        // 2) Decision‑tree update
+        float dt = clock.restart().asSeconds();
+        SteeringOutput steer = controller.update(character, dt);
 
+        // 3) Integrate kinematics
+        character.velocity    += steer.linear  * dt;
+        character.position    += character.velocity * dt;
+        character.rotation    += steer.angular * dt;
+        character.orientation += character.rotation * dt;
+        character.orientation  = mapToRange(character.orientation);
+
+        // 4) Drop a breadcrumb every 0.1s
+        breadcrumbs.drop_timer -= dt;
+        if (breadcrumbs.drop_timer <= 0.f) {
+            breadcrumbs.drop_timer += 0.4f;
+            auto& cb = breadcrumbs.crumbs[breadcrumbs.crumb_idx];
+            cb.shape.setPosition(character.position);
+            breadcrumbs.crumb_idx =
+              (breadcrumbs.crumb_idx + 1) % breadcrumbs.crumbs.size();
+        }
+
+        // 5) Draw
+        window.clear(sf::Color::White);
+
+        // • walls
+        for (auto& w : walls)
+            window.draw(w);
+
+        // • breadcrumbs
+        for (auto& cb : breadcrumbs.crumbs)
+            window.draw(cb.shape);
+
+        // • graph nodes
+        sf::CircleShape nodeShape(3.f);
+        nodeShape.setOrigin(3.f,3.f);
+        nodeShape.setFillColor(sf::Color::Black);
+        for (auto& n : graphNodes) {
+            nodeShape.setPosition(n.position);
+            window.draw(nodeShape);
+        }
+
+        // • boid sprite
         boidSprite.setPosition(character.position);
         boidSprite.setRotation(character.orientation * 180.f / PI);
-
-        window.clear(sf::Color::White);
-        for (auto& wall : walls) window.draw(wall);
-
-        sf::CircleShape nodeShape(3.f);
-        nodeShape.setOrigin(3.f, 3.f);
-        nodeShape.setFillColor(sf::Color::Black);
-        for (int i = 0; i < graphNodes.size(); i++) {
-            nodeShape.setPosition(graphNodes[i].position);
-            window.draw(nodeShape);
-            for (int neighbor : graphNodes[i].neighbors) {
-                sf::Vertex line[] = {
-                    sf::Vertex(graphNodes[i].position, sf::Color(180, 180, 180)),
-                    sf::Vertex(graphNodes[neighbor].position, sf::Color(180, 180, 180))
-                };
-                window.draw(line, 2, sf::Lines);
-            }
-        }
-
-        for (int i = 0; i + 1 < currentPath.size(); i++) {
-            sf::Vertex line[] = {
-                sf::Vertex(graphNodes[currentPath[i]].position, sf::Color::Red),
-                sf::Vertex(graphNodes[currentPath[i + 1]].position, sf::Color::Red)
-            };
-            window.draw(line, 2, sf::Lines);
-        }
-
         window.draw(boidSprite);
+
         window.display();
     }
 

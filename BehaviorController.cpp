@@ -8,8 +8,7 @@
 #include <cmath>
 
 // externs from your part4.cpp
-extern int getClosestNode(sf::Vector2f);
-extern std::vector<int> AStar(int, int);
+
 
 BehaviorController::BehaviorController(const std::vector<Node>& graph,
                                        const std::vector<sf::RectangleShape>& walls)
