@@ -15,7 +15,7 @@ private:
     bool         done_;
 };
 
-// ——— Chase (with two modes) ——————————————————————————————————
+// ——— Chase (with path‐follow) ——————————————————————————————————
 struct ChasePlayerTask : public BTNode {
     ChasePlayerTask();
 
@@ -24,14 +24,14 @@ struct ChasePlayerTask : public BTNode {
 
 private:
     float              aggroRange_;  // beyond this → Failure → wander
-    float              pathRange_;   // within this → pathfind
+    float              pathRange_;   // within this → switch into path‑follow
     std::vector<int>   path_;
     int                pathIdx_;
 };
 
 // ——— Graph Wander —————————————————————————————————————
 struct GraphWanderTask : public BTNode {
-    GraphWanderTask(); 
+    GraphWanderTask();
     virtual Status tick(WorldState& w, float dt) override;
 private:
     std::vector<int> path_;
