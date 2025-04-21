@@ -1,44 +1,37 @@
-// MonsterTasks.hpp
 #pragma once
 
 #include "BTNode.hpp"
-#include "Steering.hpp"
 #include "Node.hpp"
-#include <SFML/Graphics.hpp>
+#include "Steering.hpp"
+#include <vector>
 
-/// 1) Chase the player until within eatRadius
-class ChasePlayerTask : public BTNode {
-public:
-    Status tick(WorldState& w, float dt) override;
-};
-
-/// 2) Wander around when not chasing
-class WanderTask : public BTNode {
-public:
-    Status tick(WorldState& w, float dt) override;
-};
-
-/// 3) Once “eaten,” teleport both back and succeed exactly once
-class ResetTask : public BTNode {
-public:
+// ——— Reset —————————————————————————————————————————
+struct ResetTask : public BTNode {
     ResetTask(const sf::Vector2f& monStart,
               const sf::Vector2f& plyStart);
-    Status tick(WorldState& w, float dt) override;
-
+    virtual Status tick(WorldState& w, float dt) override;
 private:
     sf::Vector2f monStart_, plyStart_;
     bool         done_;
 };
 
-/// A leaf that wanders *on* the graph: pathfinds to random nodes.
-class GraphWanderTask : public BTNode {
-public:
-    GraphWanderTask()
-        : pathIdx_(0)
-    {}
+// ——— Chase (with two modes) ——————————————————————————————————
+struct ChasePlayerTask : public BTNode {
+    ChasePlayerTask();
 
+    // returns Running while chasing, Success on “eat”, Failure if too far
     virtual Status tick(WorldState& w, float dt) override;
 
+private:
+    float              aggroRange_;  // beyond this → Failure → wander
+    float              pathRange_;   // within this → pathfind
+    std::vector<int>   path_;
+    int                pathIdx_;
+};
+
+// ——— Graph Wander —————————————————————————————————————
+struct GraphWanderTask : public BTNode {
+    virtual Status tick(WorldState& w, float dt) override;
 private:
     std::vector<int> path_;
     int              pathIdx_;

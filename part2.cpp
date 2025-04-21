@@ -7,7 +7,7 @@
 
 #include "Environment.hpp"       // extern graphNodes; drawSymmetricRoomLayout; createGraphGrid; isInsideWall
 #include "Node.hpp"              // getClosestNode; AStar
-#include "Steering.hpp"          // Kinematic, ArriveBehavior, AlignBehavior, vectorLength, mapToRange
+#include "Steering.hpp"          // Kinematic, vectorLength, normalize, mapToRange
 #include "BehaviorController.hpp"
 #include "MonsterController.hpp"
 
@@ -97,12 +97,19 @@ int main() {
 
         float dt = clock.restart().asSeconds();
 
-        // — Update player —
+        // — Update player with wall‐clamp —
         SteeringOutput ps = playerCtrl.update(player, dt);
-        player.velocity    += ps.linear  * dt;
-        player.position    += player.velocity  * dt;
+        player.velocity += ps.linear * dt;
+        {
+            sf::Vector2f prev = player.position;
+            player.position += player.velocity * dt;
+            if (isInsideWall(player.position, walls)) {
+                player.position = prev;
+                player.velocity = {0.f,0.f};
+            }
+        }
         player.rotation    += ps.angular * dt;
-        player.orientation += player.rotation   * dt;
+        player.orientation += player.rotation * dt;
         player.orientation  = mapToRange(player.orientation);
 
         // — Breadcrumb drop —
@@ -115,17 +122,26 @@ int main() {
               (breadcrumbs.crumb_idx + 1) % breadcrumbs.crumbs.size();
         }
 
-        // — Update monster via its behavior tree —
-        monsterCtrl.update(dt);
+        // — Update monster with wall‐clamp —
+        {
+            sf::Vector2f prevM = monster.position;
+            monsterCtrl.update(dt);
+            if (isInsideWall(monster.position, walls)) {
+                monster.position = prevM;
+                monster.velocity = {0.f,0.f};
+            }
+        }
 
         // — Manual collision reset —
         if (distanceVec(player.position, monster.position) < eatRadius) {
-            // reset player
+            // reset player & its controller
             player.position    = playerStart;
             player.velocity    = {0.f,0.f};
             player.orientation = 0.f;
             player.rotation    = 0.f;
-            // reset monster
+            playerCtrl.initialize(player);
+
+            // reset monster only kinematics (its BT ResetTask will fire next tick)
             monster.position    = monsterStart;
             monster.velocity    = {0.f,0.f};
             monster.orientation = 0.f;
