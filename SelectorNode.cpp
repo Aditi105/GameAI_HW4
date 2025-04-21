@@ -1,18 +1,14 @@
 #include "SelectorNode.hpp"
-SelectorNode::SelectorNode(const std::vector<BTNode*>& c)
-  : children_(c) {}
+
+SelectorNode::SelectorNode(const std::vector<BTNode*>& children)
+  : children_(children)
+{}
 
 Status SelectorNode::tick(WorldState& w, float dt) {
-    while (current_ < (int)children_.size()) {
-        Status s = children_[current_]->tick(w, dt);
-        if (s == Status::Running) return Status::Running;
-        if (s == Status::Success) {
-            current_ = 0;
-            return Status::Success;
-        }
-        // Failure → next
-        ++current_;
+    for (auto* child : children_) {
+        Status s = child->tick(w, dt);
+        if (s == Status::Running || s == Status::Success)
+            return s;
     }
-    current_ = 0;
     return Status::Failure;
 }

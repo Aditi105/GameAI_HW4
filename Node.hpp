@@ -9,9 +9,9 @@ struct Node {
     std::vector<int> neighbors;
 };
 
-// nav‐mesh storage
+// nav‐mesh storage (defined in Environment.cpp)
 extern std::vector<Node> graphNodes;
 
-// pathfinding helpers
+// pathfinding helpers (defined in Node.cpp)
 int getClosestNode(const sf::Vector2f& pos);
 std::vector<int> AStar(int startIndx, int goalIndx);

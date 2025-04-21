@@ -1,3 +1,4 @@
+// MonsterController.cpp
 #include "MonsterController.hpp"
 #include "MonsterBehaviorFactory.hpp"
 
@@ -12,10 +13,10 @@ MonsterController::MonsterController(
 {
     world_.monster    = &monster;
     world_.player     = &player;
-    world_.graphNodes = &graph;      // ← wire up your nav‐mesh
+    world_.graphNodes = &graph;
     world_.walls      = &walls;
     world_.eatRadius  = eatRadius;
-    world_.lastAction = "";           // ← start with empty action
+    world_.lastAction = "";
 
     root_ = MonsterBehaviorFactory::buildTree(
         monStart, plyStart, eatRadius
@@ -24,5 +25,4 @@ MonsterController::MonsterController(
 
 void MonsterController::update(float dt) {
     root_->tick(world_, dt);
-    // world_.lastAction has now been set by the leaf that ran
 }

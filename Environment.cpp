@@ -1,5 +1,4 @@
 // Environment.cpp
-
 #include "Environment.hpp"
 #include <cmath>
 
@@ -45,9 +44,9 @@ void createGraphGrid(std::vector<Node>& graph,
                      int spacing, int width, int height)
 {
     std::vector<sf::Vector2f> removePts = {
-      {156,126},{156,150},{156,174},{156,198},
-      {396,102},{420,102},{396,126},
-      {108,366},{444,366},{468,366}
+        {156,126},{156,150},{156,174},{156,198},
+        {396,102},{420,102},{396,126},
+        {108,366},{444,366},{468,366}
     };
 
     for (int x = spacing; x < width; x += spacing) {
@@ -57,9 +56,7 @@ void createGraphGrid(std::vector<Node>& graph,
             if (isInsideWall(p,walls)) continue;
             bool skip=false;
             for (auto& r : removePts)
-                if (std::sqrt((p.x-r.x)*(p.x-r.x)+(p.y-r.y)*(p.y-r.y))<1.f) {
-                    skip=true; break;
-                }
+                if (std::hypot(p.x-r.x,p.y-r.y)<1.f) { skip=true; break; }
             if (!skip) graph.push_back({p,{}});
         }
     }
@@ -67,9 +64,11 @@ void createGraphGrid(std::vector<Node>& graph,
     // connect neighbors
     for (int i = 0; i < (int)graph.size(); ++i) {
         for (int j = i+1; j < (int)graph.size(); ++j) {
-            sf::Vector2f d = graph[i].position - graph[j].position;
-            float dist = std::sqrt(d.x*d.x + d.y*d.y);
-            if (dist <= spacing+2) {
+            float d = std::hypot(
+                graph[i].position.x-graph[j].position.x,
+                graph[i].position.y-graph[j].position.y
+            );
+            if (d <= spacing+2) {
                 graph[i].neighbors.push_back(j);
                 graph[j].neighbors.push_back(i);
             }

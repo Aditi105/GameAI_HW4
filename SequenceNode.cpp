@@ -1,18 +1,14 @@
 #include "SequenceNode.hpp"
-SequenceNode::SequenceNode(const std::vector<BTNode*>& c)
-  : children_(c) {}
+
+SequenceNode::SequenceNode(const std::vector<BTNode*>& children)
+  : children_(children)
+{}
 
 Status SequenceNode::tick(WorldState& w, float dt) {
-    while (current_ < (int)children_.size()) {
-        Status s = children_[current_]->tick(w, dt);
-        if (s == Status::Running) return Status::Running;
-        if (s == Status::Failure) {
-            current_ = 0;
-            return Status::Failure;
-        }
-        // Success → next child
-        ++current_;
+    for (auto* child : children_) {
+        Status s = child->tick(w, dt);
+        if (s == Status::Running || s == Status::Failure)
+            return s;
     }
-    current_ = 0;
     return Status::Success;
 }

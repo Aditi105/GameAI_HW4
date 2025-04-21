@@ -1,5 +1,6 @@
 #pragma once
 #include "BTNode.hpp"
+#include <vector>
 
 class SelectorNode : public BTNode {
 public:
@@ -7,5 +8,4 @@ public:
     Status tick(WorldState& w, float dt) override;
 private:
     std::vector<BTNode*> children_;
-    int current_ = 0;
 };

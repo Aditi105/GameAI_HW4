@@ -5,17 +5,13 @@
 #include <vector>
 #include "Node.hpp"
 
-// global nav‐mesh
+// global nav‐mesh storage (instantiate in Environment.cpp)
 extern std::vector<Node> graphNodes;
 
-// draw the red room & walls
+// build & probe the four‐room layout
 void drawSymmetricRoomLayout(std::vector<sf::RectangleShape>& walls);
-
-// build the A* node grid around those walls
 void createGraphGrid(std::vector<Node>& graphNodes,
                      const std::vector<sf::RectangleShape>& walls,
                      int spacing, int width, int height);
-
-// helper for probing walls
 bool isInsideWall(const sf::Vector2f& pos,
                   const std::vector<sf::RectangleShape>& walls);
