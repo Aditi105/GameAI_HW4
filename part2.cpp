@@ -13,30 +13,29 @@
 
 using namespace std;
 
-//———————————————————————————————————————————————————————————————————————————————
-// Breadcrumb definitions (for the player boid)
-//———————————————————————————————————————————————————————————————————————————————
+// ────────────────────────────────────────────────────────────────────────────────
+// A tiny crumb + breadcrumb‐buffer that takes a color
+// ────────────────────────────────────────────────────────────────────────────────
 struct crumb {
     sf::CircleShape shape;
-    crumb(int /*idx*/) {
+    crumb(sf::Color c) {
         shape.setRadius(3.f);
         shape.setOrigin(3.f, 3.f);
-        shape.setFillColor(sf::Color(100, 100, 100, 180));
+        shape.setFillColor(c);
     }
 };
 
 struct BoidBreadcrumbs {
     vector<crumb> crumbs;
-    float         drop_timer;
-    int           crumb_idx;
+    float         timer;
+    int           idx;
 
-    BoidBreadcrumbs()
-      : drop_timer(0.1f)
-      , crumb_idx(0)
+    BoidBreadcrumbs(sf::Color c)
+      : timer(0.5f), idx(0)
     {
         crumbs.reserve(20);
         for (int i = 0; i < 20; ++i)
-            crumbs.emplace_back(i);
+            crumbs.emplace_back(c);
     }
 };
 
@@ -48,7 +47,7 @@ inline float distanceVec(const sf::Vector2f& a, const sf::Vector2f& b) {
 
 int main() {
     // 1) Window & environment
-    sf::RenderWindow window({640,480}, "Part2: Player + Monster");
+    sf::RenderWindow window({640,480}, "Part2");
     vector<sf::RectangleShape> walls;
     drawSymmetricRoomLayout(walls);
     createGraphGrid(graphNodes, walls, 24, 640, 480);
@@ -57,9 +56,9 @@ int main() {
     Kinematic player{ graphNodes[0].position, {0,0}, 0.f, 0.f };
     BehaviorController playerCtrl(graphNodes, walls);
     playerCtrl.initialize(player);
-    BoidBreadcrumbs breadcrumbs;
+    BoidBreadcrumbs playerCrumbs(sf::Color(100,100,100,180));
 
-    // 3) Monster boid + controller
+    // 3) Monster boid + controller + breadcrumbs
     Kinematic monster{ graphNodes.back().position, {0,0}, 0.f, 0.f };
     MonsterController monsterCtrl(
         graphNodes, walls,
@@ -67,6 +66,7 @@ int main() {
         monster.position, player.position,
         /*eatRadius=*/12.f
     );
+    BoidBreadcrumbs monsterCrumbs(sf::Color::Red);
 
     // cache starts for manual reset on collision
     sf::Vector2f playerStart  = player.position;
@@ -90,6 +90,7 @@ int main() {
 
     // 5) Main loop
     while (window.isOpen()) {
+        // poll
         sf::Event e;
         while (window.pollEvent(e))
             if (e.type == sf::Event::Closed)
@@ -97,58 +98,66 @@ int main() {
 
         float dt = clock.restart().asSeconds();
 
-        // — Update player with wall‐clamp —
+        // — Update player w/ wall‑clamp —
         SteeringOutput ps = playerCtrl.update(player, dt);
         player.velocity += ps.linear * dt;
         {
-            sf::Vector2f prev = player.position;
+            auto prev = player.position;
             player.position += player.velocity * dt;
             if (isInsideWall(player.position, walls)) {
                 player.position = prev;
-                player.velocity = {0.f,0.f};
+                player.velocity = {0,0};
             }
         }
         player.rotation    += ps.angular * dt;
         player.orientation += player.rotation * dt;
         player.orientation  = mapToRange(player.orientation);
 
-        // — Breadcrumb drop —
-        breadcrumbs.drop_timer -= dt;
-        if (breadcrumbs.drop_timer <= 0.f) {
-            breadcrumbs.drop_timer += 0.1f;
-            auto& cb = breadcrumbs.crumbs[breadcrumbs.crumb_idx];
+        // — Drop player crumb —
+        playerCrumbs.timer -= dt;
+        if (playerCrumbs.timer <= 0.f) {
+            playerCrumbs.timer += 0.1f;
+            auto& cb = playerCrumbs.crumbs[playerCrumbs.idx];
             cb.shape.setPosition(player.position);
-            breadcrumbs.crumb_idx =
-              (breadcrumbs.crumb_idx + 1) % breadcrumbs.crumbs.size();
+            playerCrumbs.idx = (playerCrumbs.idx + 1) % playerCrumbs.crumbs.size();
         }
 
-        // — Update monster with wall‐clamp —
+        // — Update monster w/ wall‑clamp —
         {
-            sf::Vector2f prevM = monster.position;
+            auto prevM = monster.position;
             monsterCtrl.update(dt);
             if (isInsideWall(monster.position, walls)) {
                 monster.position = prevM;
-                monster.velocity = {0.f,0.f};
+                monster.velocity = {0,0};
             }
+        }
+
+        // — Drop monster crumb —
+        monsterCrumbs.timer -= dt;
+        if (monsterCrumbs.timer <= 0.f) {
+            monsterCrumbs.timer += 0.1f;
+            auto& cb = monsterCrumbs.crumbs[monsterCrumbs.idx];
+            cb.shape.setPosition(monster.position);
+            monsterCrumbs.idx = (monsterCrumbs.idx + 1) % monsterCrumbs.crumbs.size();
         }
 
         // — Manual collision reset —
         if (distanceVec(player.position, monster.position) < eatRadius) {
-            // reset player & its controller
+            // reset player
             player.position    = playerStart;
-            player.velocity    = {0.f,0.f};
+            player.velocity    = {0,0};
             player.orientation = 0.f;
             player.rotation    = 0.f;
             playerCtrl.initialize(player);
 
-            // reset monster only kinematics (its BT ResetTask will fire next tick)
+            // reset monster (its ResetTask will also fire next tick)
             monster.position    = monsterStart;
-            monster.velocity    = {0.f,0.f};
+            monster.velocity    = {0,0};
             monster.orientation = 0.f;
             monster.rotation    = 0.f;
         }
 
-        // — Draw everything —
+        // — Draw —
         window.clear(sf::Color::White);
 
         // walls
@@ -156,7 +165,9 @@ int main() {
             window.draw(w);
 
         // breadcrumbs
-        for (auto& cb : breadcrumbs.crumbs)
+        for (auto& cb : playerCrumbs.crumbs)
+            window.draw(cb.shape);
+        for (auto& cb : monsterCrumbs.crumbs)
             window.draw(cb.shape);
 
         // graph nodes

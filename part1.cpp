@@ -10,7 +10,7 @@
 #include "Steering.hpp"        // your Arrive/Align/Wander APIs
 
 int main() {
-    sf::RenderWindow window({640,480}, "Part1: A* + Steering");
+    sf::RenderWindow window({640,480}, "Part1");
     
     // 1) Build walls & nav‑mesh from the shared code
     std::vector<sf::RectangleShape> walls;

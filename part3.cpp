@@ -13,21 +13,44 @@
 #include "DataRecorder.hpp"    // for Sample, DataRecorder
 
 // ————————————————————————————————————————————————————————————————————————————————
-// helper: which of the 4 rooms am I in?
+// breadcrumb types
+//———————————————————————————————————————————————————————————————————————————————
+struct crumb {
+    sf::CircleShape shape;
+    crumb(sf::Color color) {
+        shape.setRadius(3.f);
+        shape.setOrigin(3.f, 3.f);
+        shape.setFillColor(color);
+    }
+};
+
+struct BoidBreadcrumbs {
+    std::vector<crumb> crumbs;
+    float              drop_timer = 0.1f;
+    int                idx        = 0;
+
+    BoidBreadcrumbs(sf::Color color) {
+        crumbs.reserve(20);
+        for (int i = 0; i < 20; ++i)
+            crumbs.emplace_back(color);
+    }
+};
+
+// ————————————————————————————————————————————————————————————————————————————————
+// which of the 4 rooms am I in?
 //———————————————————————————————————————————————————————————————————————————————
 int getRoomId(const sf::Vector2f& pos) {
-    // window is 640×480, split at x=320, y=240
     bool right = pos.x >= 320.f;
     bool down  = pos.y >= 240.f;
-    if (!right && !down) return 0; // top-left
-    if ( right && !down) return 1; // top-right
-    if (!right &&  down) return 2; // bottom-left
-    return 3;                       // bottom-right
+    if (!right && !down) return 0;
+    if ( right && !down) return 1;
+    if (!right &&  down) return 2;
+    return 3;
 }
 
 int main() {
     // 1) set up window & environment
-    sf::RenderWindow window({640,480}, "Part3: Data Collection");
+    sf::RenderWindow window({640,480}, "Part3");
     std::vector<sf::RectangleShape> walls;
     drawSymmetricRoomLayout(walls);
     createGraphGrid(graphNodes, walls, 24, 640, 480);
@@ -57,7 +80,11 @@ int main() {
     // 4) data recorder
     DataRecorder recorder("monster_data.csv");
 
-    // 5) shared sprite (black for player, red for monster)
+    // 5) breadcrumb trails
+    BoidBreadcrumbs playerCrumbs(sf::Color(100,100,100,180));
+    BoidBreadcrumbs monsterCrumbs(sf::Color(200,  0,  0,180));
+
+    // 6) shared sprite (black for player, red for monster)
     sf::Texture tex;
     if (!tex.loadFromFile("./boid-sm.png")) {
         std::cerr << "Failed to load boid-sm.png\n";
@@ -67,10 +94,10 @@ int main() {
     playerSprite.setOrigin(tex.getSize().x/2.f, tex.getSize().y/2.f);
     monsterSprite.setOrigin(tex.getSize().x/2.f, tex.getSize().y/2.f);
     playerSprite.setScale(2.5f,2.5f);
-    monsterSprite.setScale(2.5f,2.5f);
+    monsterSprite.setScale(3.5f,3.5f);
     monsterSprite.setColor(sf::Color::Red);
 
-    // 6) main loop
+    // 7) main loop
     sf::Clock clock;
     while (window.isOpen()) {
         // — events —
@@ -81,34 +108,71 @@ int main() {
 
         float dt = clock.restart().asSeconds();
 
-        // — update player via its BT —
+        // — update player via its BT, clamp to walls —
         SteeringOutput ps = playerCtrl.update(player, dt);
         player.velocity    += ps.linear  * dt;
-        player.position    += player.velocity * dt;
+        {
+            sf::Vector2f prev = player.position;
+            player.position += player.velocity * dt;
+            if (isInsideWall(player.position, walls)) {
+                player.position = prev;
+                player.velocity = {0.f,0.f};
+            }
+        }
         player.rotation    += ps.angular * dt;
-        player.orientation += player.rotation * dt;
+        player.orientation += player.rotation   * dt;
         player.orientation  = mapToRange(player.orientation);
 
-        // — update monster via its BT —
-        monsterCtrl.update(dt);
+        // — drop player breadcrumb —
+        playerCrumbs.drop_timer -= dt;
+        if (playerCrumbs.drop_timer <= 0.f) {
+            playerCrumbs.drop_timer += 0.4f;
+            auto& cb = playerCrumbs.crumbs[playerCrumbs.idx];
+            cb.shape.setPosition(player.position);
+            playerCrumbs.idx =
+                (playerCrumbs.idx + 1) % playerCrumbs.crumbs.size();
+        }
+
+        // — update monster via its BT, clamp to walls —
+        {
+            sf::Vector2f prev = monster.position;
+            monsterCtrl.update(dt);
+            if (isInsideWall(monster.position, walls)) {
+                monster.position = prev;
+                monster.velocity = {0.f,0.f};
+            }
+        }
+
+        // — drop monster breadcrumb —
+        monsterCrumbs.drop_timer -= dt;
+        if (monsterCrumbs.drop_timer <= 0.f) {
+            monsterCrumbs.drop_timer += 0.4f;
+            auto& cb = monsterCrumbs.crumbs[monsterCrumbs.idx];
+            cb.shape.setPosition(monster.position);
+            monsterCrumbs.idx =
+                (monsterCrumbs.idx + 1) % monsterCrumbs.crumbs.size();
+        }
 
         // — record a Sample —
         Sample s;
         s.roomId       = getRoomId(monster.position);
         s.distToPlayer = vectorLength(player.position - monster.position);
         s.inAggro      = (s.distToPlayer < 400.f);
-        // probe a little ahead to see if walking into wall
         sf::Vector2f probe = monster.position +
             sf::Vector2f(std::cos(monster.orientation),
                          std::sin(monster.orientation)) * 10.f;
         s.hittingWall  = isInsideWall(probe, walls);
-        s.action       = monsterCtrl.getLastActionName();  // "chase","wander","reset"
+        s.action       = monsterCtrl.getLastActionName();
         recorder.record(s);
 
-        // — draw for visualization (optional) —
+        // — draw —
         window.clear(sf::Color::White);
-        for (auto& w : walls) window.draw(w);
-        // draw nav‐mesh nodes (optional)
+
+        // • walls
+        for (auto& w : walls)
+            window.draw(w);
+
+        // • nav‑mesh (optional)
         sf::CircleShape dot(3.f);
         dot.setOrigin(3,3);
         dot.setFillColor(sf::Color(180,180,180));
@@ -116,12 +180,22 @@ int main() {
             dot.setPosition(n.position);
             window.draw(dot);
         }
+
+        // • breadcrumbs
+        for (auto& cb : playerCrumbs.crumbs)
+            window.draw(cb.shape);
+        for (auto& cb : monsterCrumbs.crumbs)
+            window.draw(cb.shape);
+
+        // • sprites
         playerSprite.setPosition(player.position);
         playerSprite.setRotation(player.orientation*180.f/PI);
         window.draw(playerSprite);
+
         monsterSprite.setPosition(monster.position);
         monsterSprite.setRotation(monster.orientation*180.f/PI);
         window.draw(monsterSprite);
+
         window.display();
     }
 

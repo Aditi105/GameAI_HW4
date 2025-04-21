@@ -31,6 +31,7 @@ private:
 
 // ——— Graph Wander —————————————————————————————————————
 struct GraphWanderTask : public BTNode {
+    GraphWanderTask(); 
     virtual Status tick(WorldState& w, float dt) override;
 private:
     std::vector<int> path_;
