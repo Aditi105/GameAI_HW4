@@ -8,19 +8,19 @@ SRCS     := DecisionNode.cpp \
             ActionNode.cpp \
             BehaviorTreeFactory.cpp \
             BehaviorController.cpp \
-            part4.cpp
+            part1.cpp
 
 OBJS     := $(SRCS:.cpp=.o)
 
-all: part4
+all: part1
 
-part4: $(OBJS)
+part1: $(OBJS)
 	$(CXX) $(OBJS) $(LDFLAGS) -o $@
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) part4
+	rm -f $(OBJS) part1
 
 .PHONY: all clean
