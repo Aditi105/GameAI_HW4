@@ -19,8 +19,8 @@ BehaviorController::BehaviorController(const std::vector<Node>& graph,
   , graphNodes_(graph)
   , walls_(walls)
   // tune these params as you like
-  , arrive_(150.f, 150.f, 10.f, 80.f, 0.4f)
-  , align_(100.f, PI, 0.1f, 0.1f, 0.1f)
+  , arrive_(250.f, 300.f, 15.f, 300.f, 0.3f)
+  , align_(200.f, PI * 3, 0.02f, 2.0f, 0.1f)
   , wander_(150.f, 150.f, 50.f, 30.f, 10.f, 0.4f)
   , currentWaypoint_(-1)
   , currentPathIndex_(0)
@@ -62,36 +62,35 @@ SteeringOutput BehaviorController::update(Kinematic& character, float dt) {
             pickNewWaypoint(character);
             return {};  // no steering this frame
             case BehaviorType::Pathfind: {
-                // 1) Determine which graph‐node we're currently aiming for
+                // 1) Which node we’re aiming at
                 sf::Vector2f targetPos = graphNodes_[ currentPath_[currentPathIndex_] ].position;
             
-                // 2) Compute distance *to this segment target*, not the final one
+                // 2) Advance segment if close enough
                 float segDist = vectorLength(targetPos - character.position);
-            
-                // 3) If we've reached it, advance the index
                 if (segDist < State::targetEpsilon) {
                     currentPathIndex_++;
-                    // If we just finished the *last* node, go pick a new waypoint next frame
                     if (currentPathIndex_ >= (int)currentPath_.size()) {
                         lastBehavior_ = BehaviorType::PickNewWaypoint;
-                        return {};  
+                        return {};
                     }
-                    // Otherwise update to the *new* target node
                     targetPos = graphNodes_[ currentPath_[currentPathIndex_] ].position;
                 }
             
-                // 4) Build a dummy target kinematic for arrive+align
+                // 3) Build correct target orientation
                 Kinematic targetKin;
                 targetKin.position = targetPos;
-                targetKin.orientation = character.orientation;
-                targetKin.velocity    = sf::Vector2f(0,0);
-                targetKin.rotation    = 0;
+                float dx = targetPos.x - character.position.x;
+                float dy = targetPos.y - character.position.y;
+                targetKin.orientation = std::atan2(dy, dx);  // ← desired heading
+                targetKin.velocity    = sf::Vector2f(0.f, 0.f);
+                targetKin.rotation    = 0.f;
             
-                // 5) Get your arrive & align steering and return it
+                // 4) Get steering
                 SteeringOutput la = arrive_.getSteering(character, targetKin, dt);
                 SteeringOutput al = align_.getSteering(character, targetKin, dt);
                 return { la.linear, al.angular };
             }
+            
         case BehaviorType::Wander:
             return wander_.getSteering(character, character, dt);
         case BehaviorType::Flee:
